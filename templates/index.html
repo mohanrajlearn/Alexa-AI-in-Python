@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Alexa Simulator</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+
+        #responseContainer {
+            border: 1px solid #ccc;
+            padding: 50px;
+            height: 300px;
+            overflow-y: scroll;
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 50px;
+        }
+
+        .userMessage {
+            color: blue;
+        }
+
+        .alexaMessage {
+            color: green;
+        }
+
+        label {
+            margin-right: 5px;
+        }
+
+        #user_input {
+            width: 100%;
+            margin-right: 5px;
+            padding-left: 10px;
+        }
+
+        #user_input {
+            height: 30px;
+        }
+
+        .micIcon {
+            position: relative;
+            padding-left: 30px; /* Add padding to the left for the icon */
+        }
+
+        .micIcon svg {
+            position: absolute;
+            top: 50%;
+            left: 5px; /* Adjust the position of the icon */
+            transform: translateY(-50%);
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            fill: black; /* Default color of the mic icon */
+        }
+
+        .micIcon.active svg {
+            fill: red; /* Change the color to your desired color when active */
+        }
+
+        .va {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 50px;
+        }
+
+        button {
+            height: 35px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Welcome to Alexa Simulator</h1>
+    <div class="va"> 
+        <input type="text" id="user_input" placeholder="Type here...">
+        <button onclick="handleUserInput()">Submit</button>
+        <!-- Mic icon for voice assistant -->
+        <div class="micIcon" id="voiceAssistantBtn" onclick="toggleVoiceRecognition()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" class="micIconSvg">
+                <title>ionicons-v5-g</title>
+                <line x1="192" y1="448" x2="320" y2="448" style="fill:none;stroke:#000;stroke-linecap:square;stroke-miterlimit:10;stroke-width:32px"/>
+                <path d="M384,208v32c0,70.4-57.6,128-128,128h0c-70.4,0-128-57.6-128-128V208" style="fill:none;stroke:#000;stroke-linecap:square;stroke-miterlimit:10;stroke-width:32px"/>
+                <line x1="256" y1="368" x2="256" y2="448" style="fill:none;stroke:#000;stroke-linecap:square;stroke-miterlimit:10;stroke-width:32px"/>
+                <path d="M256,320a78.83,78.83,0,0,1-56.55-24.1A80.89,80.89,0,0,1,176,239V128a79.69,79.69,0,0,1,80-80c44.86,0,80,35.14,80,80V239C336,283.66,300.11,320,256,320Z"/>
+            </svg>
+        </div>
+    </div>
+    <div id="responseContainer">
+        <!-- The <div> to display the conversation responses -->
+    </div>
+
+    <script>
+        let isVoiceRecognitionOn = false;
+        let recognition;
+
+        function toggleVoiceRecognition() {
+            if (isVoiceRecognitionOn) {
+                stopVoiceRecognition();
+            } else {
+                startVoiceRecognition();
+            }
+            isVoiceRecognitionOn = !isVoiceRecognitionOn;
+
+            // Toggle the active class on the mic icon
+            const micIcon = document.getElementById("voiceAssistantBtn");
+            micIcon.classList.toggle("active", isVoiceRecognitionOn);
+        }
+
+        function handleUserInput() {
+            const user_input = document.getElementById("user_input").value;
+            document.getElementById("user_input").value = ''; // Clear the input field
+
+            fetch('/alexa/skill', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ user_input: user_input }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+
+                // Display user message in the conversation container
+                displayMessage('userMessage', 'User: ' + user_input);
+
+                // Check if there is an Alexa response
+                if (data.response.outputSpeech.ssml) {
+                    const ssml = data.response.outputSpeech.ssml;
+                    const speak_output = ssml.substring(7, ssml.length - 8); // Remove <speak> and </speak> tags
+
+                    // Display Alexa message in the conversation container
+                    displayMessage('alexaMessage', 'Alexa: ' + speak_output);
+
+                    // Use the Web Speech API to play the audio response
+                    const synth = window.speechSynthesis;
+                    const utterance = new SpeechSynthesisUtterance(speak_output);
+                    utterance.rate = 1; // Adjust the speech rate if needed
+                    synth.speak(utterance);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function displayMessage(className, message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add(className);
+            messageElement.textContent = message;
+            document.getElementById('responseContainer').appendChild(messageElement);
+
+            // Automatically scroll to the bottom of the container
+            const container = document.getElementById('responseContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function startVoiceRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+            } else if ('SpeechRecognition' in window) {
+                recognition = new SpeechRecognition();
+            } else {
+                console.error('Speech recognition is not supported in this browser.');
+                return;
+            }
+
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onresult = function(event) {
+                const voiceInput = event.results[event.results.length - 1][0].transcript;
+                console.log('Voice Input:', voiceInput);
+
+                // Set the user input field with the voice input
+                document.getElementById('user_input').value = voiceInput;
+
+                // Call the handler to process the user input
+                handleUserInput();
+            };
+
+            recognition.onerror = function(event) {
+                console.error('Error in voice recognition:', event.error);
+            };
+
+            recognition.start();
+        }
+
+        function stopVoiceRecognition() {
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+    </script>
+</body>
+</html>
